@@ -65,7 +65,8 @@ REDIS_SESSION_TACTICS_SUFFIX = ":tactics"
 BASE_REFUND = (
     "You are a customer on a voice call with customer support. You are seeking a refund. "
     "Use the tactics provided. Stay in character as the customer. You are calling them; they answer. "
-    "Once you get the refund, hang up; don't continue the conversation."
+    "As soon as the support agent grants the refund, end the call immediately—say a brief thanks and hang up. "
+    "Do not prolong the conversation, ask follow-ups, or add lengthy goodbyes once the refund is granted."
 )
 BASE_NEGOTIATION = (
     "You are a customer on a voice call negotiating (e.g. a discount, booking, or deal). "
@@ -106,11 +107,16 @@ def get_session_config(session_id: str | None = None) -> dict:
 
 @weave.op()
 def log_session_end(
-    session_id: str, config: dict, duration_seconds: float, outcome: str
+    session_id: str,
+    config: dict,
+    duration_seconds: float,
+    outcome: str,
+    transcript_length: int = 0,
+    transcript_preview: str = "",
 ) -> dict:
     """Log session end and outcome score to Weave so evals/traces show success/failure."""
     score = 1.0 if outcome == "success" else 0.0
-    # Return only fields not already in inputs (avoids duplicate session_id/outcome columns in trace tables)
+    # Return only fields not already in inputs (avoids duplicate columns in trace tables)
     return {
         "score": score,
         "tactics_count": config.get("tactics_count", 0),
@@ -122,12 +128,26 @@ def _format_transcript(messages: list) -> str:
     lines = []
     for m in messages:
         role = m.get("role", "unknown")
+        if role == "system":
+            continue
         content = m.get("content")
+        if content is None:
+            continue
         if isinstance(content, list):
-            content = " ".join(
-                p.get("text", p) if isinstance(p, dict) else str(p) for p in content
-            )
-        if content and role != "system":
+            parts = []
+            for p in content:
+                if isinstance(p, dict) and "text" in p:
+                    parts.append(str(p["text"]).strip())
+                elif isinstance(p, dict) and "type" in p and p.get("type") == "text":
+                    parts.append(str(p.get("text", "")).strip())
+                elif isinstance(p, str):
+                    parts.append(p.strip())
+            content = " ".join(p for p in parts if p) or None
+        elif isinstance(content, str):
+            content = content.strip() or None
+        else:
+            content = str(content).strip() or None
+        if content:
             lines.append(f"{role}: {content}")
     return "\n".join(lines)
 
@@ -264,14 +284,28 @@ async def run_bot(transport: BaseTransport):
     async def on_client_disconnected(transport, client):
         duration_seconds = time.monotonic() - start_time
         logger.info(f"Client disconnected session_id={session_id} duration_secs={round(duration_seconds, 1)}")
+        # Brief delay so aggregators can flush in-flight frames into context
+        await asyncio.sleep(0.5)
         messages = context.get_messages()
         transcript = _format_transcript(messages)
+        transcript_length = len(transcript)
+        preview = (transcript[:600] + "…") if len(transcript) > 600 else transcript
+        logger.info(
+            f"Transcript length={transcript_length} chars session_id={session_id} preview={preview[:120]!r}"
+        )
         outcome = await asyncio.to_thread(
             _evaluate_outcome, transcript, config.get("mode", "refund")
         )
         logger.info(f"Auto-evaluated outcome session_id={session_id} outcome={outcome}")
         if os.getenv("WANDB_API_KEY"):
-            log_session_end(session_id, config, duration_seconds, outcome)
+            log_session_end(
+                session_id,
+                config,
+                duration_seconds,
+                outcome,
+                transcript_length=transcript_length,
+                transcript_preview=preview,
+            )
         url = os.getenv("REDIS_URL")
         if url and config.get("tactics"):
             r = redis.from_url(url)
