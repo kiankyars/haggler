@@ -9,7 +9,7 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 - **Pipeline**: Realtime
   - **Service**: Gemini Live
 - **Weave**: Session config (system instruction + tactics) traced when `WANDB_API_KEY` is set.
-- **Redis**: Optional. Set `REDIS_URL`; tactics stored in list `agent:tactics` are appended to the system instruction.
+- **Redis**: Optional. Set `REDIS_URL`; tactics stored in list `agent:tactics` are appended to the system instruction. Pre-seed with `uv run python scripts/seed_tactics.py` (from `server/`).
 
 ## Setup
 
