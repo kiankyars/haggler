@@ -37,13 +37,13 @@ print(f"Recent trajectories (log_session_end) — {project}\n")
 print(f"{'session_id':<12} {'outcome':<8} {'score':<6} {'duration_sec':<12} trace_id")
 print("-" * 60)
 for c in log_ends[:25]:
-    out = getattr(c, "output", None) or {}
-    d = dict(out) if hasattr(out, "items") else {}
-    outcome = d.get("outcome", "?")
-    score = d.get("score", "?")
-    sid = (d.get("session_id") or "?")[:12]
     inp = getattr(c, "inputs", None) or {}
     dinp = dict(inp) if hasattr(inp, "items") else {}
+    out = getattr(c, "output", None) or {}
+    d = dict(out) if hasattr(out, "items") else {}
+    sid = (dinp.get("session_id") or d.get("session_id") or "?")[:12]
+    outcome = dinp.get("outcome") or d.get("outcome", "?")
+    score = d.get("score", "?")
     dur = dinp.get("duration_seconds")
     dur_s = f"{round(dur, 1)}" if isinstance(dur, (int, float)) else str(dur)
     trace_id = getattr(c, "trace_id", "") or ""

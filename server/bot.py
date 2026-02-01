@@ -110,9 +110,8 @@ def log_session_end(
 ) -> dict:
     """Log session end and outcome score to Weave so evals/traces show success/failure."""
     score = 1.0 if outcome == "success" else 0.0
+    # Return only fields not already in inputs (avoids duplicate session_id/outcome columns in trace tables)
     return {
-        "session_id": session_id,
-        "outcome": outcome,
         "score": score,
         "tactics_count": config.get("tactics_count", 0),
         "mode": config.get("mode", "refund"),
