@@ -41,11 +41,8 @@ import redis
 import uuid
 import time
 
-from google import genai
-
 from outcome import (
     OUTCOME_DATASET_NAME,
-    evaluate_outcome_gemini,
     evaluate_outcome_wandb,
     run_single_row_eval_sync,
     suggest_tactic_wandb,
@@ -189,33 +186,6 @@ def _format_transcript(messages: list) -> str:
     return "\n".join(lines)
 
 
-def _suggest_new_tactic(transcript: str, mode: str) -> str:
-    """Ask Gemini for one new tactic based on what worked in this successful call. Sync, run in thread."""
-    if not transcript.strip():
-        return ""
-    goal = "refund" if mode == "refund" else "negotiation (discount/booking/deal)"
-    prompt = (
-        f"You are analyzing a successful voice call. In the transcript, the customer is the 'assistant', support is the 'user'. "
-        f"The customer got what they wanted ({goal}). Based on what worked in this call, suggest exactly one new tactic "
-        f"that could help in similar situations. Output only the tactic text, one clear sentence, no preamble or numbering."
-    )
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        return ""
-    client = genai.Client(api_key=api_key)
-    model_name = os.getenv("GOOGLE_EVAL_MODEL", "gemini-2.0-flash")
-    response = client.models.generate_content(
-        model=model_name,
-        contents=f"{prompt}\n\nTranscript:\n{transcript}",
-    )
-    text = getattr(response, "text", None) or ""
-    if not text and getattr(response, "candidates", None):
-        c = response.candidates[0] if response.candidates else None
-        if c and getattr(c, "content", None) and c.content.parts:
-            text = getattr(c.content.parts[0], "text", "") or ""
-    return text.strip() if text else ""
-
-
 def _merge_winning_tactics(url: str, session_id: str, tactics: list[str]) -> None:
     """Merge session tactics into agent:winning_tactics (self-improvement)."""
     r = redis.from_url(url)
@@ -305,7 +275,10 @@ async def run_bot(transport: BaseTransport):
             f"Transcript length={transcript_length} chars session_id={session_id} preview={preview[:120]!r}"
         )
         mode = config.get("mode", "refund")
-        if os.getenv("WANDB_API_KEY"):
+        if not os.getenv("WANDB_API_KEY"):
+            logger.warning("WANDB_API_KEY not set; skipping outcome/eval/Redis (no Gemini fallback)")
+            outcome = "failure"
+        else:
             outcome = await asyncio.to_thread(evaluate_outcome_wandb, transcript, mode)
             await asyncio.to_thread(
                 add_example_to_outcome_dataset, transcript, mode, outcome
@@ -313,10 +286,6 @@ async def run_bot(transport: BaseTransport):
             await asyncio.to_thread(
                 run_single_row_eval_sync, transcript, mode, outcome
             )
-        else:
-            outcome = await asyncio.to_thread(evaluate_outcome_gemini, transcript, mode)
-        logger.info(f"Outcome (eval) session_id={session_id} outcome={outcome}")
-        if os.getenv("WANDB_API_KEY"):
             log_session_end(
                 session_id,
                 config,
@@ -325,6 +294,7 @@ async def run_bot(transport: BaseTransport):
                 transcript_length=transcript_length,
                 transcript_preview=preview,
             )
+        logger.info(f"Outcome (eval) session_id={session_id} outcome={outcome}")
         url = os.getenv("REDIS_URL")
         if url and config.get("tactics"):
             r = redis.from_url(url)
@@ -334,15 +304,11 @@ async def run_bot(transport: BaseTransport):
             r.expire(key, 86400)
             if outcome == "success":
                 _merge_winning_tactics(url, session_id, config["tactics"])
-                mode = config.get("mode", "refund")
-                if os.getenv("WANDB_API_KEY"):
-                    suggested = await asyncio.to_thread(
-                        suggest_tactic_wandb, transcript, mode
-                    )
-                else:
-                    suggested = await asyncio.to_thread(
-                        _suggest_new_tactic, transcript, mode
-                    )
+                suggested = (
+                    await asyncio.to_thread(suggest_tactic_wandb, transcript, mode)
+                    if os.getenv("WANDB_API_KEY")
+                    else ""
+                )
                 if suggested:
                     base_raw = r.lrange(REDIS_TACTICS_KEY, 0, -1) or []
                     base_set = {b.decode() if isinstance(b, bytes) else b for b in base_raw}

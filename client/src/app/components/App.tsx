@@ -4,7 +4,6 @@ import type { PipecatBaseChildProps } from '@pipecat-ai/voice-ui-kit';
 import {
   ConnectButton,
   ConversationPanel,
-  EventsPanel,
   UserAudioControl,
 } from '@pipecat-ai/voice-ui-kit';
 
@@ -63,9 +62,6 @@ export const App = ({
         <div className="h-full overflow-hidden">
           <ConversationPanel />
         </div>
-      </div>
-      <div className="h-96 overflow-hidden px-4 pb-4">
-        <EventsPanel />
       </div>
     </div>
   );
