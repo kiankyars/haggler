@@ -9,7 +9,7 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 - **Pipeline**: Realtime
   - **Service**: Gemini Live
 - **Modes**: `HAGGLER_MODE=refund` (default) or `negotiation` — refund agent (seeking refund) or negotiation agent (discount/booking/deal). You play the counterparty (support/other side); the agent “calls” you via the client.
-- **Weave**: Session config traced at start; session end (config + duration) logged on disconnect. If you get "permission denied" from Weave, create the project in W&B UI (e.g. `kyars/haggler`) or unset `WANDB_API_KEY` to run without tracing.
+- **Weave**: Session config traced at start; session end (config + duration) logged on disconnect. Set `WEAVE_PROJECT=factorio/haggler` (or `entity/project`) so traces appear at [wandb.ai/entity/project/weave/traces](https://wandb.ai/factorio/haggler/weave/traces). If you get "permission denied", create the project in W&B UI or unset `WANDB_API_KEY` to run without tracing.
 - **Redis**: `agent:tactics` = tactics list; `agent:winning_tactics` = tactics that won (prepended on next run). Pre-seed via redis-cli: `LPUSH agent:tactics "your tactic"`. Self-improvement: after each call, the bot auto-evaluates the transcript and merges tactics into `agent:winning_tactics` on success.
 
 ## Setup

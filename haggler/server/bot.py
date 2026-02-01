@@ -47,7 +47,11 @@ from google import genai
 load_dotenv(override=True)
 
 if os.getenv("WANDB_API_KEY"):
+    # Use entity/project (e.g. factorio/haggler) so traces appear in the right W&B project
     project = os.getenv("WEAVE_PROJECT", "haggler")
+    entity = os.getenv("WANDB_ENTITY")
+    if entity and "/" not in project:
+        project = f"{entity}/{project}"
     try:
         weave.init(project)
     except Exception as e:
