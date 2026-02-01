@@ -71,7 +71,7 @@ REDIS_SESSION_TACTICS_SUFFIX = ":tactics"
 HAGGLER_OUTCOME_DATASET = OUTCOME_DATASET_NAME
 
 BASE_REFUND = (
-    "You are a customer on a voice call with customer support. You are seeking a refund. "
+    "You are a customer on a voice call with customer support. You are seeking a refund for a flight cancellation. "
     "Use the tactics provided. Stay in character as the customer. You are calling them; they answer. "
     "When the support agent grants the refund, end the call."
 )
