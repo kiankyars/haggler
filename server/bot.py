@@ -43,7 +43,7 @@ import time
 
 from google import genai
 
-from outcome import evaluate_outcome_gemini
+from outcome import OUTCOME_DATASET_NAME, evaluate_outcome_gemini
 
 load_dotenv(override=True)
 
@@ -63,6 +63,9 @@ REDIS_WINNING_KEY = "agent:winning_tactics"
 REDIS_FAILED_KEY = "agent:failed_tactics"
 REDIS_SESSION_TACTICS_PREFIX = "session:"
 REDIS_SESSION_TACTICS_SUFFIX = ":tactics"
+
+# Weave Dataset for outcome evals (see outcome.OUTCOME_DATASET_NAME); bot adds examples live (success only)
+HAGGLER_OUTCOME_DATASET = OUTCOME_DATASET_NAME
 
 BASE_REFUND = (
     "You are a customer on a voice call with customer support. You are seeking a refund. "
@@ -143,6 +146,13 @@ def log_session_end(
         "tactics_count": config.get("tactics_count", 0),
         "mode": config.get("mode", "refund"),
     }
+
+
+def add_example_to_outcome_dataset(transcript: str, mode: str, expected_outcome: str) -> None:
+    """Append one example to the Weave outcome dataset (native evals). Run run_outcome_eval once to bootstrap the dataset."""
+    ref = weave.ref(HAGGLER_OUTCOME_DATASET)
+    ds = ref.get()
+    ds.add_rows([{"transcript": transcript, "mode": mode, "expected_outcome": expected_outcome}])
 
 
 def _format_transcript(messages: list) -> str:
@@ -301,6 +311,13 @@ async def run_bot(transport: BaseTransport):
                 transcript_length=transcript_length,
                 transcript_preview=preview,
             )
+            if outcome == "success":
+                await asyncio.to_thread(
+                    add_example_to_outcome_dataset,
+                    transcript,
+                    config.get("mode", "refund"),
+                    outcome,
+                )
         url = os.getenv("REDIS_URL")
         if url and config.get("tactics"):
             r = redis.from_url(url)

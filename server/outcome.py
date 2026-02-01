@@ -2,10 +2,13 @@
 
 Used by:
 - bot.py: at session end, to drive refinement loop (winning_tactics / failed_tactics).
-- run_outcome_eval.py: offline benchmark on a golden dataset in W&B.
+- run_outcome_eval.py: Weave Evaluation on dataset (seed + live examples from bot).
 
 One prompt, one parse. Eval validates what production uses.
 """
+
+# Weave Dataset name for outcome evals; bot adds rows on success; run_outcome_eval runs Evaluation on it
+OUTCOME_DATASET_NAME = "haggler-outcome-examples"
 
 import os
 from typing import Literal
