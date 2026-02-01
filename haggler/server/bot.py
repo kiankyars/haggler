@@ -44,7 +44,11 @@ import time
 load_dotenv(override=True)
 
 if os.getenv("WANDB_API_KEY"):
-    weave.init(os.getenv("WEAVE_PROJECT", "haggler"))
+    project = os.getenv("WEAVE_PROJECT", "haggler")
+    try:
+        weave.init(project)
+    except Exception as e:
+        logger.warning(f"Weave init failed ({e}); running without tracing")
 
 REDIS_TACTICS_KEY = "agent:tactics"
 REDIS_WINNING_KEY = "agent:winning_tactics"

@@ -9,7 +9,7 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 - **Pipeline**: Realtime
   - **Service**: Gemini Live
 - **Modes**: `HAGGLER_MODE=refund` (default) or `negotiation` — refund agent (seeking refund) or negotiation agent (discount/booking/deal). You play the counterparty (support/other side); the agent “calls” you via the client.
-- **Weave**: Session config traced at start; session end (config + duration) logged on disconnect. Outcome logged via `uv run python scripts/log_outcome.py <session_id> success|fail`.
+- **Weave**: Session config traced at start; session end (config + duration) logged on disconnect. Outcome logged via `uv run python scripts/log_outcome.py <session_id> success|fail`. If you get "permission denied" from Weave, create the project in W&B UI (e.g. `kyars/haggler`) or unset `WANDB_API_KEY` to run without tracing.
 - **Redis**: `agent:tactics` = tactics list; `agent:winning_tactics` = tactics that won (prepended on next run). Pre-seed: `uv run python scripts/seed_tactics.py`. Self-improvement: after a call, run `log_outcome.py <session_id> success` to merge that session’s tactics into `agent:winning_tactics`.
 
 ## Setup
