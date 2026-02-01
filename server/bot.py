@@ -64,7 +64,8 @@ REDIS_SESSION_TACTICS_SUFFIX = ":tactics"
 
 BASE_REFUND = (
     "You are a customer on a voice call with customer support. You are seeking a refund. "
-    "Use the tactics provided. Stay in character as the customer. You are calling them; they answer."
+    "Use the tactics provided. Stay in character as the customer. You are calling them; they answer. "
+    "Once you get the refund, hang up; don't continue the conversation."
 )
 BASE_NEGOTIATION = (
     "You are a customer on a voice call negotiating (e.g. a discount, booking, or deal). "
