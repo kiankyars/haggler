@@ -1,33 +1,23 @@
 """Run Weave Evaluation for the haggler outcome classifier.
 
-Uses the same evaluator as the bot (Gemini) so you can:
-- Version eval datasets and compare runs in W&B
-- Tune the eval prompt/model against human-labeled outcomes
-- Track scorer metrics (e.g. correct vs expected_outcome)
+Uses W&B Inference (one API, no Gemini). Version eval datasets and compare runs in W&B.
 
-Requires: WANDB_API_KEY, GOOGLE_API_KEY (for the classifier).
+Requires: WANDB_API_KEY.
 Run from server dir: uv run scripts/run_outcome_eval.py
-Set WANDB_API_KEY and GOOGLE_API_KEY (e.g. in .env).
 """
 
 import asyncio
 import os
-import sys
-from pathlib import Path
-
-# So "from bot import ..." works when run as scripts/run_outcome_eval.py
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from textwrap import dedent
 
 import weave
 from dotenv import load_dotenv
+from openai import OpenAI
+from pydantic import PrivateAttr
 from weave import Evaluation, Model
 
 load_dotenv(override=True)
 
-from bot import _evaluate_outcome
-
-# Small curated set: add rows with transcript + expected_outcome (success/failure)
-# so the scorer can measure classifier accuracy. Extend or load from CSV/Weave dataset.
 OUTCOME_EXAMPLES = [
     {
         "transcript": "user: Sorry, we cannot offer a refund after 30 days.\nassistant: I've been a loyal customer for 10 years. Can I speak to a supervisor?\nuser: I've approved a one-time refund to your original payment method.\nassistant: Thank you.",
@@ -59,21 +49,47 @@ def outcome_scorer(expected_outcome: str, output: dict) -> dict:
     return {"correct": pred == exp}
 
 
-class OutcomeModel(Model):
-    """Wraps the bot's _evaluate_outcome so we can run Weave Evaluation."""
+SYSTEM_PROMPT = dedent("""
+You are evaluating a voice call. The customer is the 'assistant' in the transcript; 'user' is support/agent.
+Given the transcript and whether the customer was seeking a refund or negotiating (discount/booking/deal),
+say if the customer got what they wanted (refund granted, deal agreed, discount given, etc.).
+Answer with exactly one word: success or failure.
+""")
 
-    @weave.op()
+
+class OutcomeModel(Model):
+    prompt: weave.Prompt = weave.StringPrompt(SYSTEM_PROMPT)
+    model: str = "OpenPipe/Qwen3-14B-Instruct"
+    _client: OpenAI = PrivateAttr()
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._client = OpenAI(
+            base_url="https://api.inference.wandb.ai/v1",
+            api_key=os.environ["WANDB_API_KEY"],
+            project=os.getenv("WEAVE_PROJECT", "factorio/haggler"),
+        )
+
+    @weave.op
     def predict(self, transcript: str, mode: str) -> dict:
-        outcome = _evaluate_outcome(transcript, mode)
+        if not transcript.strip():
+            return {"outcome": "failure"}
+        goal = "seeking a refund" if mode == "refund" else "negotiating (discount/booking/deal)"
+        response = self._client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": self.prompt.format()},
+                {"role": "user", "content": f"Goal: {goal}\n\nTranscript:\n{transcript}\n\nAnswer (success or failure):"},
+            ],
+        )
+        text = (response.choices[0].message.content or "").strip().lower()
+        outcome = "success" if text.startswith("success") else "failure"
         return {"outcome": outcome}
 
 
 def main() -> None:
     if not os.environ.get("WANDB_API_KEY"):
-        print("WANDB_API_KEY is not set. Set it to run evals (e.g. from https://wandb.ai/authorize).")
-        raise SystemExit(1)
-    if not os.environ.get("GOOGLE_API_KEY"):
-        print("GOOGLE_API_KEY is not set. The classifier uses Gemini.")
+        print("WANDB_API_KEY is not set (e.g. https://wandb.ai/authorize).")
         raise SystemExit(1)
 
     project = os.getenv("WEAVE_PROJECT", "factorio/haggler")
