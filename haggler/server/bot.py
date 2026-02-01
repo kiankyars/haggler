@@ -76,9 +76,7 @@ BASE_NEGOTIATION = (
 def get_session_config(session_id: str | None = None) -> dict:
     """Fetch base system instruction and Redis tactics for Weave trace + agent use."""
     mode = os.getenv("HAGGLER_MODE", "refund").lower()
-    base = os.getenv("GOOGLE_SYSTEM_INSTRUCTION")
-    if not base:
-        base = BASE_REFUND if mode == "refund" else BASE_NEGOTIATION
+    base = BASE_REFUND if mode == "refund" else BASE_NEGOTIATION
     tactics: list[str] = []
     url = os.getenv("REDIS_URL")
     if url:
@@ -198,9 +196,9 @@ async def run_bot(transport: BaseTransport):
         inference_on_context_initialization=False,
     )
 
-    # Context system message must match LLM system_instruction or Pipecat overrides with context
-    messages = [{"role": "system", "content": config["system_instruction"]}]
-    context = LLMContext(messages)
+    # Empty initial context so Pipecat sends nothing to Gemini on connect (no first "user" turn).
+    # System instruction is already on the LLM service above; no initial response = you speak first, less latency.
+    context = LLMContext(messages=[])
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
