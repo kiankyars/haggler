@@ -1,0 +1,4 @@
+# Local env (secrets); use .env.example as template
+.env
+server/.env
+*.env.local
