@@ -58,6 +58,7 @@ if os.getenv("WANDB_API_KEY"):
 
 REDIS_TACTICS_KEY = "agent:tactics"
 REDIS_WINNING_KEY = "agent:winning_tactics"
+REDIS_FAILED_KEY = "agent:failed_tactics"
 REDIS_SESSION_TACTICS_PREFIX = "session:"
 REDIS_SESSION_TACTICS_SUFFIX = ":tactics"
 
@@ -105,9 +106,18 @@ def get_session_config(session_id: str | None = None) -> dict:
 
 
 @weave.op()
-def log_session_end(session_id: str, config: dict, duration_seconds: float) -> None:
-    """Log session end to Weave for outcome scoring and self-improvement."""
-    return None
+def log_session_end(
+    session_id: str, config: dict, duration_seconds: float, outcome: str
+) -> dict:
+    """Log session end and outcome score to Weave so evals/traces show success/failure."""
+    score = 1.0 if outcome == "success" else 0.0
+    return {
+        "session_id": session_id,
+        "outcome": outcome,
+        "score": score,
+        "tactics_count": config.get("tactics_count", 0),
+        "mode": config.get("mode", "refund"),
+    }
 
 
 def _format_transcript(messages: list) -> str:
@@ -226,8 +236,14 @@ async def run_bot(transport: BaseTransport):
     async def on_client_disconnected(transport, client):
         duration_seconds = time.monotonic() - start_time
         logger.info(f"Client disconnected session_id={session_id} duration_secs={round(duration_seconds, 1)}")
+        messages = context.get_messages()
+        transcript = _format_transcript(messages)
+        outcome = await asyncio.to_thread(
+            _evaluate_outcome, transcript, config.get("mode", "refund")
+        )
+        logger.info(f"Auto-evaluated outcome session_id={session_id} outcome={outcome}")
         if os.getenv("WANDB_API_KEY"):
-            log_session_end(session_id, config, duration_seconds)
+            log_session_end(session_id, config, duration_seconds, outcome)
         url = os.getenv("REDIS_URL")
         if url and config.get("tactics"):
             r = redis.from_url(url)
@@ -235,16 +251,13 @@ async def run_bot(transport: BaseTransport):
             r.delete(key)
             r.rpush(key, *config["tactics"])
             r.expire(key, 86400)
+            if outcome == "success":
+                _merge_winning_tactics(url, session_id, config["tactics"])
+            else:
+                for t in config["tactics"]:
+                    r.rpush(REDIS_FAILED_KEY, t)
+                r.expire(REDIS_FAILED_KEY, 86400 * 7)
             r.close()
-        # Auto-detect outcome from transcript and merge winning tactics (self-improvement)
-        messages = context.get_messages()
-        transcript = _format_transcript(messages)
-        outcome = await asyncio.to_thread(
-            _evaluate_outcome, transcript, config.get("mode", "refund")
-        )
-        logger.info(f"Auto-evaluated outcome session_id={session_id} outcome={outcome}")
-        if outcome == "success" and url and config.get("tactics"):
-            _merge_winning_tactics(url, session_id, config["tactics"])
         await task.cancel()
 
 

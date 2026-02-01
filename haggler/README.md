@@ -9,8 +9,8 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 - **Pipeline**: Realtime
   - **Service**: Gemini Live
 - **Modes**: `HAGGLER_MODE=refund` (default) or `negotiation` — refund agent (seeking refund) or negotiation agent (discount/booking/deal). You play the counterparty (support/other side); the agent “calls” you via the client.
-- **Weave**: Session config traced at start; session end (config + duration) logged on disconnect. Set `WEAVE_PROJECT=factorio/haggler` (or `entity/project`) so traces appear at [wandb.ai/entity/project/weave/traces](https://wandb.ai/factorio/haggler/weave/traces). If you get "permission denied", create the project in W&B UI or unset `WANDB_API_KEY` to run without tracing.
-- **Redis**: `agent:tactics` = tactics list; `agent:winning_tactics` = tactics that won (prepended on next run). Pre-seed via redis-cli: `LPUSH agent:tactics "your tactic"`. Self-improvement: after each call, the bot auto-evaluates the transcript and merges tactics into `agent:winning_tactics` on success.
+- **Weave**: Session config traced at start; session end (config + duration) logged on disconnect. Set `WEAVE_PROJECT=factorio/haggler` so traces appear at [wandb.ai/factorio/haggler/weave/traces](https://wandb.ai/factorio/haggler/weave/traces). Each trace includes a **score** in the `log_session_end` op output (`outcome`: success/failure, `score`: 1.0 or 0.0). Tactics are updated from evals: success → `agent:winning_tactics`, failure → `agent:failed_tactics`. **Check project via wandb CLI:** `wandb login` then `wandb projects --entity factorio` or open https://wandb.ai/factorio/haggler. If you get "permission denied", create the project in W&B UI or unset `WANDB_API_KEY` to run without tracing.
+- **Redis**: `agent:tactics` = tactics list; `agent:winning_tactics` = tactics that won (prepended next run); `agent:failed_tactics` = tactics from failed sessions (recorded for evals). Pre-seed: `LPUSH agent:tactics "your tactic"`. Self-improvement: on success merge into `agent:winning_tactics`; on failure append to `agent:failed_tactics`.
 
 ## Setup
 
