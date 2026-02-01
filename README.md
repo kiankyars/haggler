@@ -41,7 +41,7 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 
    If port 7860 is in use: `lsof -ti:7860 | xargs kill` (or stop the other process), then run again.
 
-5. **Outcome & self-improvement**: After each call, the bot auto-evaluates the transcript (LLM: did the customer get what they wanted?) and merges tactics into `agent:winning_tactics` on success.
+5. **Outcome & self-improvement**: One outcome classifier lives in `server/outcome.py` (same prompt/parse everywhere). The bot uses it at session end to drive the refinement loop; benchmark it on a golden dataset with `uv run scripts/run_outcome_eval.py` (from `server/`).
 
 ### Client
 

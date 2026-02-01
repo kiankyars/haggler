@@ -43,6 +43,8 @@ import time
 
 from google import genai
 
+from outcome import evaluate_outcome_gemini
+
 load_dotenv(override=True)
 
 if os.getenv("WANDB_API_KEY"):
@@ -171,40 +173,6 @@ def _format_transcript(messages: list) -> str:
     return "\n".join(lines)
 
 
-def _evaluate_outcome(transcript: str, mode: str) -> str:
-    """Call LLM to classify outcome as success or failure. Sync, run in thread."""
-    if not transcript.strip():
-        return "failure"
-    prompt = (
-        f"You are evaluating a voice call. The customer is the 'assistant' in the transcript; 'user' is support/agent. "
-        f"The customer was {'seeking a refund' if mode == 'refund' else 'negotiating (discount/booking/deal)'}. "
-        f"The transcript may be truncated at the end. If it shows the customer got what they wanted (refund granted, deal agreed, credit/voucher offered and accepted, etc.), answer success. "
-        f"Only answer failure if the transcript clearly shows no resolution or the customer did not get what they wanted.\n\n"
-        f"Transcript:\n{transcript}\n\n"
-        f"Answer with exactly one word: success or failure."
-    )
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        return "failure"
-    try:
-        client = genai.Client(api_key=api_key)
-        model = os.getenv("GOOGLE_EVAL_MODEL", "gemini-2.0-flash")
-        response = client.models.generate_content(model=model, contents=prompt)
-        text = getattr(response, "text", None) or ""
-        if not text and getattr(response, "candidates", None):
-            c = response.candidates[0] if response.candidates else None
-            if c and getattr(c, "content", None) and c.content.parts:
-                text = getattr(c.content.parts[0], "text", "") or ""
-        raw = (text or "").strip()
-        text = raw.lower()
-        outcome = "success" if "success" in text else "failure"
-        if outcome == "failure":
-            logger.info(f"Evaluator raw response: {raw[:200]!r}")
-        return outcome
-    except Exception:
-        return "failure"
-
-
 def _suggest_new_tactic(transcript: str, mode: str) -> str:
     """Ask Gemini for one new tactic based on what worked in this successful call. Sync, run in thread."""
     if not transcript.strip():
@@ -321,7 +289,7 @@ async def run_bot(transport: BaseTransport):
             f"Transcript length={transcript_length} chars session_id={session_id} preview={preview[:120]!r}"
         )
         outcome = await asyncio.to_thread(
-            _evaluate_outcome, transcript, config.get("mode", "refund")
+            evaluate_outcome_gemini, transcript, config.get("mode", "refund")
         )
         logger.info(f"Auto-evaluated outcome session_id={session_id} outcome={outcome}")
         if os.getenv("WANDB_API_KEY"):

@@ -1,20 +1,22 @@
 """Run Weave Evaluation for the haggler outcome classifier.
 
-Uses W&B Inference (one API, no Gemini). Version eval datasets and compare runs in W&B.
-
-Requires: WANDB_API_KEY.
-Run from server dir: uv run scripts/run_outcome_eval.py
+Uses same prompt/parse as bot (outcome.py). Benchmarks classifier on a golden dataset in W&B.
+Requires: WANDB_API_KEY. Run from server dir: uv run scripts/run_outcome_eval.py
 """
 
 import asyncio
 import os
-from textwrap import dedent
+import sys
 
 import weave
 from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import PrivateAttr
 from weave import Evaluation, Model
+
+# server/ on path so outcome is importable
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from outcome import OUTCOME_SYSTEM, goal_for_mode, parse_outcome
 
 load_dotenv(override=True)
 
@@ -49,16 +51,9 @@ def outcome_scorer(expected_outcome: str, output: dict) -> dict:
     return {"correct": pred == exp}
 
 
-SYSTEM_PROMPT = dedent("""
-You are evaluating a voice call. The customer is the 'assistant' in the transcript; 'user' is support/agent.
-Given the transcript and whether the customer was seeking a refund or negotiating (discount/booking/deal),
-say if the customer got what they wanted (refund granted, deal agreed, discount given, etc.).
-Answer with exactly one word: success or failure.
-""")
-
-
 class OutcomeModel(Model):
-    prompt: weave.Prompt = weave.StringPrompt(SYSTEM_PROMPT)
+    """Same prompt as bot (outcome.py). Eval validates production classifier."""
+    prompt: weave.Prompt = weave.StringPrompt(OUTCOME_SYSTEM)
     model: str = "OpenPipe/Qwen3-14B-Instruct"
     _client: OpenAI = PrivateAttr()
 
@@ -74,16 +69,17 @@ class OutcomeModel(Model):
     def predict(self, transcript: str, mode: str) -> dict:
         if not transcript.strip():
             return {"outcome": "failure"}
-        goal = "seeking a refund" if mode == "refund" else "negotiating (discount/booking/deal)"
+        goal = goal_for_mode(mode)
+        user_content = f"The customer was {goal}. Answer with exactly one word: success or failure.\n\nTranscript:\n{transcript}"
         response = self._client.chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": self.prompt.format()},
-                {"role": "user", "content": f"Goal: {goal}\n\nTranscript:\n{transcript}\n\nAnswer (success or failure):"},
+                {"role": "user", "content": user_content},
             ],
         )
-        text = (response.choices[0].message.content or "").strip().lower()
-        outcome = "success" if text.startswith("success") else "failure"
+        raw = (response.choices[0].message.content or "").strip()
+        outcome = parse_outcome(raw)
         return {"outcome": outcome}
 
 
