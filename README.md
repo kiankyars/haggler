@@ -41,7 +41,7 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 
    If port 7860 is in use: `lsof -ti:7860 | xargs kill` (or stop the other process), then run again.
 
-5. **Outcome & evals**: One outcome classifier in `server/outcome.py` (same prompt/parse everywhere). The bot uses it at session end to drive the refinement loop. **Weave evals (native):** Bot adds one example to the Weave Dataset after each successful negotiation; run `uv run scripts/run_outcome_eval.py` (from `server/`) once to bootstrap the dataset, then anytime to run the [Weave Evaluation](https://docs.wandb.ai/weave/guides/core-types/evaluations) on it (seed + live examples). No manual check—evals run in W&B.
+5. **Outcome & evals**: Outcome comes from the W&B eval model (same as Weave Evaluation). After each run the bot: (1) gets outcome from W&B Inference, (2) adds the run to the Weave Dataset, (3) runs the Weave Evaluation on that one row (W&B eval after each run), (4) if outcome is success, updates Redis (winning_tactics); else failed_tactics. Run `uv run scripts/run_outcome_eval.py` (from `server/`) once to bootstrap the dataset, then anytime to run the full eval on seed + live examples.
 
 ### Client
 

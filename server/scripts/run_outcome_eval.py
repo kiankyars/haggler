@@ -11,17 +11,15 @@ import sys
 
 import weave
 from dotenv import load_dotenv
-from openai import OpenAI
-from pydantic import PrivateAttr
-from weave import Dataset, Evaluation, Model
+from weave import Dataset, Evaluation
 
 # server/ on path so outcome is importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from outcome import OUTCOME_DATASET_NAME, OUTCOME_SYSTEM, goal_for_mode, parse_outcome
+from outcome import OUTCOME_DATASET_NAME, OutcomeModel, outcome_scorer
 
 load_dotenv(override=True)
 
-# Seed examples; bootstrap dataset if not exists (bot adds live on each success)
+# Seed examples; bootstrap dataset if not exists (bot adds row every run)
 OUTCOME_EXAMPLES = [
     {
         "transcript": "user: Sorry, we cannot offer a refund after 30 days.\nassistant: I've been a loyal customer for 10 years. Can I speak to a supervisor?\nuser: I've approved a one-time refund to your original payment method.\nassistant: Thank you.",
@@ -44,45 +42,6 @@ OUTCOME_EXAMPLES = [
         "expected_outcome": "success",
     },
 ]
-
-
-@weave.op()
-def outcome_scorer(expected_outcome: str, output: dict) -> dict:
-    pred = (output.get("outcome") or "").strip().lower()
-    exp = (expected_outcome or "").strip().lower()
-    return {"correct": pred == exp}
-
-
-class OutcomeModel(Model):
-    """Same prompt as bot (outcome.py). Eval validates production classifier."""
-    prompt: weave.Prompt = weave.StringPrompt(OUTCOME_SYSTEM)
-    model: str = "OpenPipe/Qwen3-14B-Instruct"
-    _client: OpenAI = PrivateAttr()
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        self._client = OpenAI(
-            base_url="https://api.inference.wandb.ai/v1",
-            api_key=os.environ["WANDB_API_KEY"],
-            project=os.getenv("WEAVE_PROJECT", "factorio/haggler"),
-        )
-
-    @weave.op
-    def predict(self, transcript: str, mode: str) -> dict:
-        if not transcript.strip():
-            return {"outcome": "failure"}
-        goal = goal_for_mode(mode)
-        user_content = f"The customer was {goal}. Answer with exactly one word: success or failure.\n\nTranscript:\n{transcript}"
-        response = self._client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": self.prompt.format()},
-                {"role": "user", "content": user_content},
-            ],
-        )
-        raw = (response.choices[0].message.content or "").strip()
-        outcome = parse_outcome(raw)
-        return {"outcome": outcome}
 
 
 def _get_or_create_outcome_dataset():

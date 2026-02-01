@@ -43,7 +43,12 @@ import time
 
 from google import genai
 
-from outcome import OUTCOME_DATASET_NAME, evaluate_outcome_gemini
+from outcome import (
+    OUTCOME_DATASET_NAME,
+    evaluate_outcome_gemini,
+    evaluate_outcome_wandb,
+    run_single_row_eval_sync,
+)
 
 load_dotenv(override=True)
 
@@ -298,10 +303,18 @@ async def run_bot(transport: BaseTransport):
         logger.info(
             f"Transcript length={transcript_length} chars session_id={session_id} preview={preview[:120]!r}"
         )
-        outcome = await asyncio.to_thread(
-            evaluate_outcome_gemini, transcript, config.get("mode", "refund")
-        )
-        logger.info(f"Auto-evaluated outcome session_id={session_id} outcome={outcome}")
+        mode = config.get("mode", "refund")
+        if os.getenv("WANDB_API_KEY"):
+            outcome = await asyncio.to_thread(evaluate_outcome_wandb, transcript, mode)
+            await asyncio.to_thread(
+                add_example_to_outcome_dataset, transcript, mode, outcome
+            )
+            await asyncio.to_thread(
+                run_single_row_eval_sync, transcript, mode, outcome
+            )
+        else:
+            outcome = await asyncio.to_thread(evaluate_outcome_gemini, transcript, mode)
+        logger.info(f"Outcome (eval) session_id={session_id} outcome={outcome}")
         if os.getenv("WANDB_API_KEY"):
             log_session_end(
                 session_id,
@@ -311,13 +324,6 @@ async def run_bot(transport: BaseTransport):
                 transcript_length=transcript_length,
                 transcript_preview=preview,
             )
-            if outcome == "success":
-                await asyncio.to_thread(
-                    add_example_to_outcome_dataset,
-                    transcript,
-                    config.get("mode", "refund"),
-                    outcome,
-                )
         url = os.getenv("REDIS_URL")
         if url and config.get("tactics"):
             r = redis.from_url(url)
