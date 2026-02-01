@@ -74,11 +74,24 @@ BASE_NEGOTIATION = (
 )
 
 
+def _caller_identity_block() -> str:
+    """Caller (customer) name, email, phone, order number for the bot to use when asked."""
+    name = os.getenv("CUSTOMER_NAME", "Jordan Lee")
+    email = os.getenv("CUSTOMER_EMAIL", "jordan.lee@example.com")
+    phone = os.getenv("CUSTOMER_PHONE", "555-0123")
+    order = os.getenv("CUSTOMER_ORDER_NUMBER", "ORD-88492")
+    return (
+        f"You are {name}. Your email is {email}, phone {phone}, order number {order}. "
+        "Provide these when the agent asks (e.g. for refund processing)."
+    )
+
+
 @weave.op()
 def get_session_config(session_id: str | None = None) -> dict:
     """Fetch base system instruction and Redis tactics for Weave trace + agent use."""
     mode = os.getenv("HAGGLER_MODE", "refund").lower()
     base = BASE_REFUND if mode == "refund" else BASE_NEGOTIATION
+    base = f"{base}\n\n{_caller_identity_block()}"
     tactics: list[str] = []
     url = os.getenv("REDIS_URL")
     if url:
