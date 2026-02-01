@@ -157,7 +157,8 @@ def _evaluate_outcome(transcript: str, mode: str) -> str:
             if c and getattr(c, "content", None) and c.content.parts:
                 text = getattr(c.content.parts[0], "text", "") or ""
         text = text.strip().lower()
-        return "success" if text.startswith("success") else "failure"
+        # Accept "success" anywhere (Gemini often says "The outcome is success." not just "success")
+        return "success" if "success" in text else "failure"
     except Exception:
         return "failure"
 
