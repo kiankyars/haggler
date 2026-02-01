@@ -162,6 +162,33 @@ def _evaluate_outcome(transcript: str, mode: str) -> str:
         return "failure"
 
 
+def _suggest_new_tactic(transcript: str, mode: str) -> str:
+    """Ask Gemini for one new tactic based on what worked in this successful call. Sync, run in thread."""
+    if not transcript.strip():
+        return ""
+    goal = "refund" if mode == "refund" else "negotiation (discount/booking/deal)"
+    prompt = (
+        f"You are analyzing a successful voice call. In the transcript, the customer is the 'assistant', support is the 'user'. "
+        f"The customer got what they wanted ({goal}). Based on what worked in this call, suggest exactly one new tactic "
+        f"that could help in similar situations. Output only the tactic text, one clear sentence, no preamble or numbering."
+    )
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        return ""
+    client = genai.Client(api_key=api_key)
+    model_name = os.getenv("GOOGLE_EVAL_MODEL", "gemini-2.0-flash")
+    response = client.models.generate_content(
+        model=model_name,
+        contents=f"{prompt}\n\nTranscript:\n{transcript}",
+    )
+    text = getattr(response, "text", None) or ""
+    if not text and getattr(response, "candidates", None):
+        c = response.candidates[0] if response.candidates else None
+        if c and getattr(c, "content", None) and c.content.parts:
+            text = getattr(c.content.parts[0], "text", "") or ""
+    return text.strip() if text else ""
+
+
 def _merge_winning_tactics(url: str, session_id: str, tactics: list[str]) -> None:
     """Merge session tactics into agent:winning_tactics (self-improvement)."""
     r = redis.from_url(url)
@@ -254,6 +281,17 @@ async def run_bot(transport: BaseTransport):
             r.expire(key, 86400)
             if outcome == "success":
                 _merge_winning_tactics(url, session_id, config["tactics"])
+                suggested = await asyncio.to_thread(
+                    _suggest_new_tactic, transcript, config.get("mode", "refund")
+                )
+                if suggested:
+                    base_raw = r.lrange(REDIS_TACTICS_KEY, 0, -1) or []
+                    base_set = {b.decode() if isinstance(b, bytes) else b for b in base_raw}
+                    winning_raw = r.lrange(REDIS_WINNING_KEY, 0, -1) or []
+                    winning_set = {b.decode() if isinstance(b, bytes) else b for b in winning_raw}
+                    if suggested not in base_set and suggested not in winning_set:
+                        r.rpush(REDIS_WINNING_KEY, suggested)
+                        logger.info(f"Suggested new tactic (session_id={session_id}): {suggested[:80]}...")
             else:
                 base_raw = r.lrange(REDIS_TACTICS_KEY, 0, -1) or []
                 base_tactics = {b.decode() if isinstance(b, bytes) else b for b in base_raw}

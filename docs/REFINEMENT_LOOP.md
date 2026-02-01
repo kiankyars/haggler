@@ -51,8 +51,8 @@ So “success” = the LLM judge decided the customer got what they wanted from 
    - If Weave is configured: `log_session_end(session_id, config, duration_seconds, outcome)` is called → trace gets `outcome` and `score` (1.0 / 0.0).  
    - Redis is updated:
      - Current session’s tactics are written to `session:<session_id>:tactics` (then key is deleted after use).
-     - **If success:** `_merge_winning_tactics()` appends any *new* tactics from this session into `agent:winning_tactics` (no duplicates).  
-     - **If failure:** each tactic from this session is appended to `agent:failed_tactics` only if not already there (deduplicated).
+     - **If success:** `_merge_winning_tactics()` appends any *new* tactics from this session into `agent:winning_tactics` (no duplicates). Then **Gemini suggests one new tactic** based on what worked in the call (`_suggest_new_tactic(transcript, mode)`); if the suggestion is non-empty and not already in base or winning_tactics, it is appended to `agent:winning_tactics`.  
+     - **If failure:** each tactic from this session is appended to `agent:failed_tactics` only if not in base_tactics and not already there (deduplicated).
 
 So: **success** → tactics from that session are promoted into **winning_tactics** and used earlier in future prompts. **Failure** → tactics are recorded in **failed_tactics** for inspection/evals only; the prompt for the next session is still **winning_tactics + tactics**.
 
@@ -76,10 +76,12 @@ So: **success** → tactics from that session are promoted into **winning_tactic
 - **Redis state**  
   - `scripts/check_redis_improvement.py` prints `agent:tactics`, `agent:winning_tactics`, `agent:failed_tactics`, and `session:*:tactics` so you can see what the refinement loop has stored.
 
-- **Adding new base tactics**  
+- **New tactics from successful rounds**  
+  - After every **successful** session, Gemini is asked to suggest one new tactic based on what worked in that call. The suggestion is appended to `agent:winning_tactics` (deduplicated against base and existing winning_tactics). No manual step required.
+
+- **Adding base tactics manually**  
   - `scripts/add_tactics.py` appends tactics to `agent:tactics` (deduplicated). Usage:  
-    `uv run python scripts/add_tactics.py "Tactic one." "Tactic two."`  
-    or `--file path` (one tactic per line), or pipe lines via stdin.
+    `uv run python scripts/add_tactics.py "Tactic one."` or `--file path`, or stdin.
 
 ---
 
@@ -106,7 +108,7 @@ Seed agent:tactics (once)
 │  Write session:<id>:tactics = tactics used this session         │
 └─────────────────────────────────────────────────────────────────┘
         │
-        ├── success ──► _merge_winning_tactics() → append new tactics to agent:winning_tactics
+        ├── success ──► _merge_winning_tactics() → _suggest_new_tactic() → append new + suggested to agent:winning_tactics
         │
         └── failure ──► append (dedup) to agent:failed_tactics
         │
