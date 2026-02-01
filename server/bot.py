@@ -78,12 +78,12 @@ def _caller_identity_block() -> str:
     """Caller (customer) name, email, phone, order number for the bot to use when asked."""
     name = os.getenv("CUSTOMER_NAME")
     email = os.getenv("CUSTOMER_EMAIL")
-    if not name or not email:
+    phone = os.getenv("CUSTOMER_PHONE")
+    order = os.getenv("CUSTOMER_ORDER_NUMBER")
+    if not name or not email or not phone or not order:
         raise ValueError(
-            "CUSTOMER_NAME and CUSTOMER_EMAIL must be set in .env (no defaults)."
+            "CUSTOMER_NAME, CUSTOMER_EMAIL, CUSTOMER_PHONE, CUSTOMER_ORDER_NUMBER must be set in .env."
         )
-    phone = os.getenv("CUSTOMER_PHONE", "555-0123")
-    order = os.getenv("CUSTOMER_ORDER_NUMBER", "ORD-88492")
     return (
         f"You are {name}. Your email is {email}, phone {phone}, order number {order}. "
         "Provide these when the agent asks (e.g. for refund processing)."
