@@ -9,8 +9,8 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 - **Pipeline**: Realtime
   - **Service**: Gemini Live
 - **Modes**: `HAGGLER_MODE=refund` (default) or `negotiation` — refund agent (seeking refund) or negotiation agent (discount/booking/deal). You play the counterparty (support/other side); the agent “calls” you via the client.
-- **Weave**: Session config traced at start; session end (config + duration) logged on disconnect. Outcome logged via `uv run python scripts/log_outcome.py <session_id> success|fail`. If you get "permission denied" from Weave, create the project in W&B UI (e.g. `kyars/haggler`) or unset `WANDB_API_KEY` to run without tracing.
-- **Redis**: `agent:tactics` = tactics list; `agent:winning_tactics` = tactics that won (prepended on next run). Pre-seed: `uv run python scripts/seed_tactics.py`. Self-improvement: after each call, the bot auto-evaluates the transcript and merges tactics into `agent:winning_tactics` on success.
+- **Weave**: Session config traced at start; session end (config + duration) logged on disconnect. If you get "permission denied" from Weave, create the project in W&B UI (e.g. `kyars/haggler`) or unset `WANDB_API_KEY` to run without tracing.
+- **Redis**: `agent:tactics` = tactics list; `agent:winning_tactics` = tactics that won (prepended on next run). Pre-seed via redis-cli: `LPUSH agent:tactics "your tactic"`. Self-improvement: after each call, the bot auto-evaluates the transcript and merges tactics into `agent:winning_tactics` on success.
 
 ## Setup
 
@@ -41,7 +41,7 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 
    If port 7860 is in use: `lsof -ti:7860 | xargs kill` (or stop the other process), then run again.
 
-5. **Outcome & self-improvement**: After each call, the bot auto-evaluates the transcript (LLM: did the customer get what they wanted?) and merges tactics into `agent:winning_tactics` on success. No manual `log_outcome.py` unless you want to override.
+5. **Outcome & self-improvement**: After each call, the bot auto-evaluates the transcript (LLM: did the customer get what they wanted?) and merges tactics into `agent:winning_tactics` on success.
 
 ### Client
 
@@ -84,8 +84,6 @@ haggler/
 │   ├── pyproject.toml   # Python dependencies
 │   ├── .env.example      # Environment variables template
 │   ├── .env              # Your API keys (git-ignored)
-│   ├── scripts/seed_tactics.py
-│   ├── scripts/log_outcome.py
 │   └── ...
 ├── client/              # React application
 │   ├── src/             # Client source code
