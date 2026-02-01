@@ -65,8 +65,7 @@ REDIS_SESSION_TACTICS_SUFFIX = ":tactics"
 BASE_REFUND = (
     "You are a customer on a voice call with customer support. You are seeking a refund. "
     "Use the tactics provided. Stay in character as the customer. You are calling them; they answer. "
-    "As soon as the support agent grants the refund, end the call immediately—say a brief thanks and hang up. "
-    "Do not prolong the conversation, ask follow-ups, or add lengthy goodbyes once the refund is granted."
+    "As soon as the support agent grants the refund, say a brief thanks and hang up. "
 )
 BASE_NEGOTIATION = (
     "You are a customer on a voice call negotiating (e.g. a discount, booking, or deal). "
@@ -99,6 +98,9 @@ def get_session_config(session_id: str | None = None) -> dict:
     tactics: list[str] = []
     url = os.getenv("REDIS_URL")
     if url:
+        url = url.strip()
+        if not url.startswith(("redis://", "rediss://", "unix://")):
+            url = "redis://" + url
         r = redis.from_url(url)
         winning_raw = r.lrange(REDIS_WINNING_KEY, 0, -1)
         winning = [b.decode() if isinstance(b, bytes) else b for b in (winning_raw or [])]
