@@ -109,7 +109,7 @@ TACTIC_SUGGEST_SYSTEM = (
 
 
 def suggest_tactic_wandb(transcript: str, mode: str) -> str:
-    """Suggest one new tactic from successful call using W&B Inference (avoids Gemini quota)."""
+    """Suggest one new tactic from successful call using W&B Inference."""
     if not transcript.strip() or not os.environ.get("WANDB_API_KEY"):
         return ""
     goal = "refund" if mode == "refund" else "negotiation (discount/booking/deal)"
@@ -132,28 +132,3 @@ def suggest_tactic_wandb(transcript: str, mode: str) -> str:
     return text
 
 
-def _outcome_prompt(transcript: str, mode: str) -> str:
-    goal = goal_for_mode(mode)
-    user_part = OUTCOME_USER_TEMPLATE.format(goal=goal, transcript=transcript)
-    return f"{OUTCOME_SYSTEM}\n\n{user_part}"
-
-
-def evaluate_outcome_gemini(transcript: str, mode: str) -> Literal["success", "failure"]:
-    """Classify outcome using Gemini. Used by bot at session end."""
-    if not transcript.strip():
-        return "failure"
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        return "failure"
-    from google import genai
-
-    client = genai.Client(api_key=api_key)
-    model = os.getenv("GOOGLE_EVAL_MODEL", "gemini-2.0-flash")
-    prompt = _outcome_prompt(transcript, mode)
-    response = client.models.generate_content(model=model, contents=prompt)
-    text = getattr(response, "text", None) or ""
-    if not text and getattr(response, "candidates", None):
-        c = response.candidates[0] if response.candidates else None
-        if c and getattr(c, "content", None) and c.content.parts:
-            text = getattr(c.content.parts[0], "text", "") or ""
-    return parse_outcome(text)
