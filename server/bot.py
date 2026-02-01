@@ -73,7 +73,7 @@ HAGGLER_OUTCOME_DATASET = OUTCOME_DATASET_NAME
 BASE_REFUND = (
     "You are a customer on a voice call with customer support. You are seeking a refund. "
     "Use the tactics provided. Stay in character as the customer. You are calling them; they answer. "
-    "As soon as the support agent grants the refund, say a brief thanks and hang up. "
+    "When the support agent grants the refund, end the call."
 )
 BASE_NEGOTIATION = (
     "You are a customer on a voice call negotiating (e.g. a discount, booking, or deal). "
@@ -317,7 +317,7 @@ async def run_bot(transport: BaseTransport):
                     if suggested not in base_set and suggested not in winning_set:
                         r.rpush(REDIS_WINNING_KEY, suggested)
                         logger.info(
-                            "Suggested new tactic (session_id=%s): %s",
+                            "Suggested new tactic (session_id={}): {}",
                             session_id,
                             suggested,
                         )
@@ -365,6 +365,17 @@ async def bot(runner_args: RunnerArguments):
 
 
 if __name__ == "__main__":
+    import sys
+    from loguru import logger as _log
+
+    _orig_add = _log.add
+
+    def _add_silence_debug_and_warning(*args, **kwargs):
+        kwargs["level"] = "INFO"
+        kwargs["filter"] = lambda record: record["level"].name != "WARNING"
+        return _orig_add(*args, **kwargs)
+
+    _log.add = _add_silence_debug_and_warning
     from pipecat.runner.run import main
 
     main()
