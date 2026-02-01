@@ -101,6 +101,37 @@ def run_single_row_eval_sync(transcript: str, mode: str, expected_outcome: str) 
     asyncio.run(evaluation.evaluate(model))
 
 
+TACTIC_SUGGEST_SYSTEM = (
+    "You are analyzing a successful voice call. In the transcript, the customer is the 'assistant', support is the 'user'. "
+    "Based on what worked in this call, suggest exactly one new tactic that could help in similar situations. "
+    "Output only the tactic text, one clear sentence, no preamble or numbering."
+)
+
+
+def suggest_tactic_wandb(transcript: str, mode: str) -> str:
+    """Suggest one new tactic from successful call using W&B Inference (avoids Gemini quota)."""
+    if not transcript.strip() or not os.environ.get("WANDB_API_KEY"):
+        return ""
+    goal = "refund" if mode == "refund" else "negotiation (discount/booking/deal)"
+    user_content = (
+        f"The customer got what they wanted ({goal}).\n\nTranscript:\n{transcript}"
+    )
+    client = OpenAI(
+        base_url="https://api.inference.wandb.ai/v1",
+        api_key=os.environ["WANDB_API_KEY"],
+        project=os.getenv("WEAVE_PROJECT", "factorio/haggler"),
+    )
+    response = client.chat.completions.create(
+        model="OpenPipe/Qwen3-14B-Instruct",
+        messages=[
+            {"role": "system", "content": TACTIC_SUGGEST_SYSTEM},
+            {"role": "user", "content": user_content},
+        ],
+    )
+    text = (response.choices[0].message.content or "").strip()
+    return text
+
+
 def _outcome_prompt(transcript: str, mode: str) -> str:
     goal = goal_for_mode(mode)
     user_part = OUTCOME_USER_TEMPLATE.format(goal=goal, transcript=transcript)

@@ -48,6 +48,7 @@ from outcome import (
     evaluate_outcome_gemini,
     evaluate_outcome_wandb,
     run_single_row_eval_sync,
+    suggest_tactic_wandb,
 )
 
 load_dotenv(override=True)
@@ -333,9 +334,15 @@ async def run_bot(transport: BaseTransport):
             r.expire(key, 86400)
             if outcome == "success":
                 _merge_winning_tactics(url, session_id, config["tactics"])
-                suggested = await asyncio.to_thread(
-                    _suggest_new_tactic, transcript, config.get("mode", "refund")
-                )
+                mode = config.get("mode", "refund")
+                if os.getenv("WANDB_API_KEY"):
+                    suggested = await asyncio.to_thread(
+                        suggest_tactic_wandb, transcript, mode
+                    )
+                else:
+                    suggested = await asyncio.to_thread(
+                        _suggest_new_tactic, transcript, mode
+                    )
                 if suggested:
                     base_raw = r.lrange(REDIS_TACTICS_KEY, 0, -1) or []
                     base_set = {b.decode() if isinstance(b, bytes) else b for b in base_raw}
