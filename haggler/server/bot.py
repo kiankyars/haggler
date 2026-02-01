@@ -188,12 +188,14 @@ async def run_bot(transport: BaseTransport):
     config = get_session_config(session_id=session_id)
     logger.info(f"Starting bot session_id={session_id} mode={config.get('mode', 'refund')}")
 
-    # Realtime LLM service (handles STT, LLM, and TTS internally)
+    # Realtime LLM service (handles STT, LLM, and TTS internally).
+    # inference_on_context_initialization=False so the counterparty (you) speak first.
     llm = GeminiLiveLLMService(
         api_key=os.getenv("GOOGLE_API_KEY"),
         model=os.getenv("GOOGLE_MODEL"),
         voice_id=os.getenv("GOOGLE_VOICE_ID"),
         system_instruction=config["system_instruction"],
+        inference_on_context_initialization=False,
     )
 
     # Context system message must match LLM system_instruction or Pipecat overrides with context
