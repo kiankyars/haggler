@@ -316,7 +316,7 @@ async def run_bot(transport: BaseTransport):
                     winning_set = {b.decode() if isinstance(b, bytes) else b for b in winning_raw}
                     if suggested not in base_set and suggested not in winning_set:
                         r.rpush(REDIS_WINNING_KEY, suggested)
-                        logger.info(f"Suggested new tactic (session_id={session_id}): {suggested[:80]}...")
+                        logger.info(f"Suggested new tactic (session_id={session_id}): {suggested}")
             else:
                 base_raw = r.lrange(REDIS_TACTICS_KEY, 0, -1) or []
                 base_tactics = {b.decode() if isinstance(b, bytes) else b for b in base_raw}
