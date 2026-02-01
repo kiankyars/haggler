@@ -183,13 +183,8 @@ async def run_bot(transport: BaseTransport):
         system_instruction=config["system_instruction"],
     )
 
-    messages = [
-        {
-            "role": "system",
-            "content": "You are a friendly AI assistant. Respond naturally and keep your answers conversational.",
-        },
-    ]
-
+    # Context system message must match LLM system_instruction or Pipecat overrides with context
+    messages = [{"role": "system", "content": config["system_instruction"]}]
     context = LLMContext(messages)
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
