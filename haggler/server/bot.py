@@ -36,10 +36,13 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from loguru import logger
 from pipecat.services.google.gemini_live.llm import GeminiLiveLLMService
 from pipecat.runner.types import RunnerArguments
+import asyncio
 import weave
 import redis
 import uuid
 import time
+
+from google import genai
 
 load_dotenv(override=True)
 
@@ -102,6 +105,65 @@ def get_session_config(session_id: str | None = None) -> dict:
 def log_session_end(session_id: str, config: dict, duration_seconds: float) -> None:
     """Log session end to Weave for outcome scoring and self-improvement."""
     return None
+
+
+def _format_transcript(messages: list) -> str:
+    lines = []
+    for m in messages:
+        role = m.get("role", "unknown")
+        content = m.get("content")
+        if isinstance(content, list):
+            content = " ".join(
+                p.get("text", p) if isinstance(p, dict) else str(p) for p in content
+            )
+        if content and role != "system":
+            lines.append(f"{role}: {content}")
+    return "\n".join(lines)
+
+
+def _evaluate_outcome(transcript: str, mode: str) -> str:
+    """Call LLM to classify outcome as success or failure. Sync, run in thread."""
+    if not transcript.strip():
+        return "failure"
+    prompt = (
+        f"You are evaluating a voice call. The customer (assistant in transcript) was "
+        f"{'seeking a refund' if mode == 'refund' else 'negotiating (discount/booking/deal)'}. "
+        f"Did the customer get what they wanted (refund granted, deal agreed, discount given, etc.)?\n\n"
+        f"Transcript:\n{transcript}\n\n"
+        f"Answer with exactly one word: success or failure."
+    )
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        return "failure"
+    try:
+        client = genai.Client(api_key=api_key)
+        model = os.getenv("GOOGLE_EVAL_MODEL", "gemini-2.0-flash")
+        response = client.models.generate_content(model=model, contents=prompt)
+        text = getattr(response, "text", None) or ""
+        if not text and getattr(response, "candidates", None):
+            c = response.candidates[0] if response.candidates else None
+            if c and getattr(c, "content", None) and c.content.parts:
+                text = getattr(c.content.parts[0], "text", "") or ""
+        text = text.strip().lower()
+        return "success" if text.startswith("success") else "failure"
+    except Exception:
+        return "failure"
+
+
+def _merge_winning_tactics(url: str, session_id: str, tactics: list[str]) -> None:
+    """Merge session tactics into agent:winning_tactics (self-improvement)."""
+    r = redis.from_url(url)
+    key = f"{REDIS_SESSION_TACTICS_PREFIX}{session_id}{REDIS_SESSION_TACTICS_SUFFIX}"
+    raw = r.lrange(key, 0, -1)
+    session_tactics = [b.decode() if isinstance(b, bytes) else b for b in (raw or [])]
+    r.delete(key)
+    existing = set(r.lrange(REDIS_WINNING_KEY, 0, -1) or [])
+    existing_decoded = {e.decode() if isinstance(e, bytes) else e for e in existing}
+    for t in session_tactics or tactics:
+        if t not in existing_decoded:
+            r.rpush(REDIS_WINNING_KEY, t)
+            existing_decoded.add(t)
+    r.close()
 
 
 
@@ -175,6 +237,15 @@ async def run_bot(transport: BaseTransport):
             r.rpush(key, *config["tactics"])
             r.expire(key, 86400)
             r.close()
+        # Auto-detect outcome from transcript and merge winning tactics (self-improvement)
+        messages = context.get_messages()
+        transcript = _format_transcript(messages)
+        outcome = await asyncio.to_thread(
+            _evaluate_outcome, transcript, config.get("mode", "refund")
+        )
+        logger.info(f"Auto-evaluated outcome session_id={session_id} outcome={outcome}")
+        if outcome == "success" and url and config.get("tactics"):
+            _merge_winning_tactics(url, session_id, config["tactics"])
         await task.cancel()
 
 
