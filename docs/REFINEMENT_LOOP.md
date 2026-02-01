@@ -4,6 +4,28 @@ How the haggler bot learns from each voice session and improves over time.
 
 ---
 
+## How we evaluate success of a trace
+
+We don’t use human labels at runtime. When you disconnect from a call, the bot:
+
+1. **Gets the transcript** – All messages from the voice call (user = you/support, assistant = the bot/customer) are read from `LLMContext` and formatted as text.
+
+2. **Calls an LLM judge** – `_evaluate_outcome(transcript, mode)` in `bot.py` sends that transcript to **Gemini** with a fixed prompt that says:
+   - In the transcript, the **customer** is the `assistant`, the **support/agent** is the `user`.
+   - The customer was either “seeking a refund” or “negotiating (discount/booking/deal)” (from `HAGGLER_MODE`).
+   - “Did the customer get what they wanted (refund granted, deal agreed, discount given, etc.)?”
+   - “Answer with exactly one word: **success** or **failure**.”
+
+3. **Uses the one-word answer** – Gemini returns “success” or “failure”. That becomes the **outcome** for this session. No ground truth is involved; it’s **LLM-as-judge**: the same LLM decides whether the transcript describes a successful outcome for the customer.
+
+4. **Logs to Weave** – `log_session_end(session_id, config, duration_seconds, outcome)` is a Weave op. It logs `outcome` and a **score** (1.0 for success, 0.0 for failure) so each trace in W&B shows how that session was classified.
+
+5. **Updates Redis** – If outcome is **success**, tactics from this session are merged into `agent:winning_tactics`. If **failure**, they’re appended (deduped) to `agent:failed_tactics`.
+
+So “success” = the LLM judge decided the customer got what they wanted from the transcript. You can tune the judge by changing the prompt or model (e.g. `GOOGLE_EVAL_MODEL`). To check how accurate the judge is, use **`scripts/run_outcome_eval.py`**: that script has a small dataset of transcripts with **human-labeled** `expected_outcome` and scores the judge’s predictions against those labels.
+
+---
+
 ## 1. Data sources (Redis)
 
 | Key | Role |

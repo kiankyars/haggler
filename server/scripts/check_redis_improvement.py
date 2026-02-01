@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Query Redis to show improvement-loop state: tactics, winning_tactics, failed_tactics.
 
+Deduplicates winning_tactics and failed_tactics automatically on every run.
 Run from server/: uv run python scripts/check_redis_improvement.py
-Deduplicate lists (fix stale duplicates): uv run python scripts/check_redis_improvement.py --dedupe
 """
-import argparse
 import os
 import redis
 from pathlib import Path
@@ -43,24 +42,17 @@ def _dedupe_list(r: redis.Redis, key: str) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Show or dedupe Redis improvement-loop state")
-    parser.add_argument("--dedupe", action="store_true", help="Deduplicate winning_tactics and failed_tactics in place")
-    args = parser.parse_args()
     url = os.getenv("REDIS_URL")
     if not url:
         print("REDIS_URL not set in .env")
         return
     r = redis.from_url(url)
 
-    if args.dedupe:
-        n_winning = _dedupe_list(r, REDIS_WINNING_KEY)
-        n_failed = _dedupe_list(r, REDIS_FAILED_KEY)
-        print(f"Deduped agent:winning_tactics: {n_winning} duplicates removed.")
-        print(f"Deduped agent:failed_tactics: {n_failed} duplicates removed.")
-        if n_winning or n_failed:
-            print("Run without --dedupe to see current state.")
-        r.close()
-        return
+    # Always dedupe on run so Redis lists stay clean
+    n_winning = _dedupe_list(r, REDIS_WINNING_KEY)
+    n_failed = _dedupe_list(r, REDIS_FAILED_KEY)
+    if n_winning or n_failed:
+        print(f"(Deduped: {n_winning} from winning_tactics, {n_failed} from failed_tactics)\n")
 
     print("=== Improvement loop state (Redis) ===\n")
 
