@@ -24,7 +24,6 @@ from pipecat.processors.aggregators.llm_response_universal import LLMContextAggr
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 import os
-from pipecat.frames.frames import LLMRunFrame
 from pipecat.transports.base_transport import BaseTransport
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
@@ -216,7 +215,8 @@ async def run_bot(transport: BaseTransport):
 
     @task.rtvi.event_handler("on_client_ready")
     async def on_client_ready(rtvi):
-        await task.queue_frames([LLMRunFrame()])
+        # Don't queue LLMRunFrame() here — wait for user (counterparty) to speak first
+        pass
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
