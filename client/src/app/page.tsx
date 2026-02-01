@@ -1,5 +1,6 @@
 'use client';
 
+import './setSinkIdPatch';
 import { useState } from 'react';
 
 import { ThemeProvider } from '@pipecat-ai/voice-ui-kit';
