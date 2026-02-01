@@ -8,8 +8,9 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 - **Transport(s)**: SmallWebRTC
 - **Pipeline**: Realtime
   - **Service**: Gemini Live
-- **Weave**: Session config (system instruction + tactics) traced when `WANDB_API_KEY` is set.
-- **Redis**: Optional. Set `REDIS_URL`; tactics stored in list `agent:tactics` are appended to the system instruction. Pre-seed with `uv run python scripts/seed_tactics.py` (from `server/`).
+- **Modes**: `HAGGLER_MODE=refund` (default) or `negotiation` — refund agent (seeking refund) or negotiation agent (discount/booking/deal). You play the counterparty (support/other side); the agent “calls” you via the client.
+- **Weave**: Session config traced at start; session end (config + duration) logged on disconnect. Outcome logged via `uv run python scripts/log_outcome.py <session_id> success|fail`.
+- **Redis**: `agent:tactics` = tactics list; `agent:winning_tactics` = tactics that won (prepended on next run). Pre-seed: `uv run python scripts/seed_tactics.py`. Self-improvement: after a call, run `log_outcome.py <session_id> success` to merge that session’s tactics into `agent:winning_tactics`.
 
 ## Setup
 
@@ -37,6 +38,10 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 4. **Run the bot**:
 
    - SmallWebRTC: `uv run bot.py`
+
+5. **After a call** (optional): Copy `session_id` from server logs. Log outcome for Weave + self-improvement:
+   - `uv run python scripts/log_outcome.py <session_id> success`
+   - or `... log_outcome.py <session_id> fail`
 
 ### Client
 
@@ -77,8 +82,10 @@ haggler/
 ├── server/              # Python bot server
 │   ├── bot.py           # Main bot implementation
 │   ├── pyproject.toml   # Python dependencies
-│   ├── env.example      # Environment variables template
-│   ├── .env             # Your API keys (git-ignored)
+│   ├── .env.example      # Environment variables template
+│   ├── .env              # Your API keys (git-ignored)
+│   ├── scripts/seed_tactics.py
+│   ├── scripts/log_outcome.py
 │   └── ...
 ├── client/              # React application
 │   ├── src/             # Client source code

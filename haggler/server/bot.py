@@ -38,6 +38,8 @@ from pipecat.services.google.gemini_live.llm import GeminiLiveLLMService
 from pipecat.runner.types import RunnerArguments
 import weave
 import redis
+import uuid
+import time
 
 load_dotenv(override=True)
 
@@ -45,30 +47,67 @@ if os.getenv("WANDB_API_KEY"):
     weave.init(os.getenv("WEAVE_PROJECT", "haggler"))
 
 REDIS_TACTICS_KEY = "agent:tactics"
+REDIS_WINNING_KEY = "agent:winning_tactics"
+REDIS_SESSION_TACTICS_PREFIX = "session:"
+REDIS_SESSION_TACTICS_SUFFIX = ":tactics"
+
+BASE_REFUND = (
+    "You are a customer on a voice call with customer support. You are seeking a refund. "
+    "Use the tactics provided. Stay in character as the customer. You are calling them; they answer."
+)
+BASE_NEGOTIATION = (
+    "You are a customer on a voice call negotiating (e.g. a discount, booking, or deal). "
+    "Use the tactics provided. Stay in character as the customer. You are calling them; they answer."
+)
 
 
 @weave.op()
-def get_session_config() -> dict:
+def get_session_config(session_id: str | None = None) -> dict:
     """Fetch base system instruction and Redis tactics for Weave trace + agent use."""
-    base = os.getenv("GOOGLE_SYSTEM_INSTRUCTION", "You are a helpful conversational assistant.")
+    mode = os.getenv("HAGGLER_MODE", "refund").lower()
+    base = os.getenv("GOOGLE_SYSTEM_INSTRUCTION")
+    if not base:
+        base = BASE_REFUND if mode == "refund" else BASE_NEGOTIATION
     tactics: list[str] = []
     url = os.getenv("REDIS_URL")
     if url:
         r = redis.from_url(url)
+        winning_raw = r.lrange(REDIS_WINNING_KEY, 0, -1)
+        winning = [b.decode() if isinstance(b, bytes) else b for b in (winning_raw or [])]
         raw = r.lrange(REDIS_TACTICS_KEY, 0, -1)
-        tactics = [b.decode() if isinstance(b, bytes) else b for b in (raw or [])]
+        base_tactics = [b.decode() if isinstance(b, bytes) else b for b in (raw or [])]
+        seen = set(winning)
+        tactics = list(winning)
+        for t in base_tactics:
+            if t not in seen:
+                tactics.append(t)
+                seen.add(t)
         r.close()
     if tactics:
         base = f"{base}\n\nWinning tactics to use when appropriate:\n" + "\n".join(f"- {t}" for t in tactics)
-    return {"system_instruction": base, "tactics_count": len(tactics)}
+    return {
+        "system_instruction": base,
+        "tactics_count": len(tactics),
+        "tactics": tactics,
+        "session_id": session_id,
+        "mode": mode,
+    }
+
+
+@weave.op()
+def log_session_end(session_id: str, config: dict, duration_seconds: float) -> None:
+    """Log session end to Weave for outcome scoring and self-improvement."""
+    return None
 
 
 
 
 async def run_bot(transport: BaseTransport):
     """Main bot logic."""
-    logger.info("Starting bot")
-    config = get_session_config()
+    session_id = str(uuid.uuid4())
+    start_time = time.monotonic()
+    config = get_session_config(session_id=session_id)
+    logger.info(f"Starting bot session_id={session_id} mode={config.get('mode', 'refund')}")
 
     # Realtime LLM service (handles STT, LLM, and TTS internally)
     llm = GeminiLiveLLMService(
@@ -77,8 +116,6 @@ async def run_bot(transport: BaseTransport):
         voice_id=os.getenv("GOOGLE_VOICE_ID"),
         system_instruction=config["system_instruction"],
     )
-
-
 
     messages = [
         {
@@ -95,26 +132,13 @@ async def run_bot(transport: BaseTransport):
         ),
     )
 
-
-    
-
-
-    # Pipeline - assembled from reusable components
     pipeline = Pipeline([
         transport.input(),
-
         user_aggregator,
-
         llm,
-
-        
         transport.output(),
-
-        
         assistant_aggregator,
-
     ])
-
 
     task = PipelineTask(
         pipeline,
@@ -122,22 +146,31 @@ async def run_bot(transport: BaseTransport):
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
-        observers=[
-        ],
+        observers=[],
     )
 
     @task.rtvi.event_handler("on_client_ready")
     async def on_client_ready(rtvi):
-        # Kick off the conversation
         await task.queue_frames([LLMRunFrame()])
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
-        logger.info("Client connected")
+        logger.info(f"Client connected session_id={session_id}")
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
-        logger.info("Client disconnected")
+        duration_seconds = time.monotonic() - start_time
+        logger.info(f"Client disconnected session_id={session_id} duration_secs={round(duration_seconds, 1)}")
+        if os.getenv("WANDB_API_KEY"):
+            log_session_end(session_id, config, duration_seconds)
+        url = os.getenv("REDIS_URL")
+        if url and config.get("tactics"):
+            r = redis.from_url(url)
+            key = f"{REDIS_SESSION_TACTICS_PREFIX}{session_id}{REDIS_SESSION_TACTICS_SUFFIX}"
+            r.delete(key)
+            r.rpush(key, *config["tactics"])
+            r.expire(key, 86400)
+            r.close()
         await task.cancel()
 
 
