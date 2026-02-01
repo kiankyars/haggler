@@ -76,6 +76,11 @@ So: **success** → tactics from that session are promoted into **winning_tactic
 - **Redis state**  
   - `scripts/check_redis_improvement.py` prints `agent:tactics`, `agent:winning_tactics`, `agent:failed_tactics`, and `session:*:tactics` so you can see what the refinement loop has stored.
 
+- **Adding new base tactics**  
+  - `scripts/add_tactics.py` appends tactics to `agent:tactics` (deduplicated). Usage:  
+    `uv run python scripts/add_tactics.py "Tactic one." "Tactic two."`  
+    or `--file path` (one tactic per line), or pipe lines via stdin.
+
 ---
 
 ## 4. End-to-end refinement loop (summary)
