@@ -1,4 +1,4 @@
-# k-new
+# haggler
 
 A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 
@@ -73,7 +73,7 @@ A Pipecat AI voice agent built with a realtime speech-to-speech pipeline.
 ## Project Structure
 
 ```
-k-new/
+haggler/
 ├── server/              # Python bot server
 │   ├── bot.py           # Main bot implementation
 │   ├── pyproject.toml   # Python dependencies
