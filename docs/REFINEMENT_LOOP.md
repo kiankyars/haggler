@@ -32,7 +32,7 @@ So “success” = the LLM judge decided the customer got what they wanted from 
 |-----|------|
 | **`agent:tactics`** | Base tactics list (you seed once, e.g. via `redis-cli`). Never overwritten by the bot. |
 | **`agent:winning_tactics`** | Tactics that appeared in sessions the evaluator scored as **success**. Prepended to the prompt on the next run. |
-| **`agent:failed_tactics`** | Tactics that appeared in sessions scored as **failure**. Deduplicated; used for analysis / evals, not fed back into the prompt. |
+| **`agent:failed_tactics`** | Tactics that appeared in sessions scored as **failure**, excluding any that are in `agent:tactics` (base tactics are never stored here). Deduplicated; used for analysis / evals, not fed back into the prompt. |
 | **`session:<uuid>:tactics`** | Per-session snapshot of the tactics used in that call. TTL 24h; deleted after merge or on failure write. |
 
 ---

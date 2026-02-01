@@ -254,10 +254,12 @@ async def run_bot(transport: BaseTransport):
             if outcome == "success":
                 _merge_winning_tactics(url, session_id, config["tactics"])
             else:
+                base_raw = r.lrange(REDIS_TACTICS_KEY, 0, -1) or []
+                base_tactics = {b.decode() if isinstance(b, bytes) else b for b in base_raw}
                 existing_raw = r.lrange(REDIS_FAILED_KEY, 0, -1) or []
                 existing = {e.decode() if isinstance(e, bytes) else e for e in existing_raw}
                 for t in config["tactics"]:
-                    if t not in existing:
+                    if t not in base_tactics and t not in existing:
                         r.rpush(REDIS_FAILED_KEY, t)
                         existing.add(t)
                 r.expire(REDIS_FAILED_KEY, 86400 * 7)

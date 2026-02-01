@@ -41,6 +41,21 @@ def _dedupe_list(r: redis.Redis, key: str) -> int:
     return removed
 
 
+def _drop_base_tactics_from_failed(r: redis.Redis) -> int:
+    """Remove any agent:tactics entries from agent:failed_tactics. Return count removed."""
+    base_raw = r.lrange(REDIS_TACTICS_KEY, 0, -1) or []
+    base_set = {_decode(x) for x in base_raw}
+    failed_raw = r.lrange(REDIS_FAILED_KEY, 0, -1) or []
+    failed = [_decode(x) for x in failed_raw]
+    kept = [t for t in failed if t not in base_set]
+    removed = len(failed) - len(kept)
+    if removed:
+        r.delete(REDIS_FAILED_KEY)
+        if kept:
+            r.rpush(REDIS_FAILED_KEY, *kept)
+    return removed
+
+
 def main() -> None:
     url = os.getenv("REDIS_URL")
     if not url:
@@ -48,11 +63,12 @@ def main() -> None:
         return
     r = redis.from_url(url)
 
-    # Always dedupe on run so Redis lists stay clean
+    # Always dedupe on run; ensure no base tactics remain in failed_tactics
     n_winning = _dedupe_list(r, REDIS_WINNING_KEY)
     n_failed = _dedupe_list(r, REDIS_FAILED_KEY)
-    if n_winning or n_failed:
-        print(f"(Deduped: {n_winning} from winning_tactics, {n_failed} from failed_tactics)\n")
+    n_dropped_base = _drop_base_tactics_from_failed(r)
+    if n_winning or n_failed or n_dropped_base:
+        print(f"(Deduped: {n_winning} from winning_tactics, {n_failed} from failed_tactics; {n_dropped_base} base tactics removed from failed_tactics)\n")
 
     print("=== Improvement loop state (Redis) ===\n")
 
