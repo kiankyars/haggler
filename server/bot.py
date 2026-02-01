@@ -76,8 +76,12 @@ BASE_NEGOTIATION = (
 
 def _caller_identity_block() -> str:
     """Caller (customer) name, email, phone, order number for the bot to use when asked."""
-    name = os.getenv("CUSTOMER_NAME", "Jordan Lee")
-    email = os.getenv("CUSTOMER_EMAIL", "jordan.lee@example.com")
+    name = os.getenv("CUSTOMER_NAME")
+    email = os.getenv("CUSTOMER_EMAIL")
+    if not name or not email:
+        raise ValueError(
+            "CUSTOMER_NAME and CUSTOMER_EMAIL must be set in .env (no defaults)."
+        )
     phone = os.getenv("CUSTOMER_PHONE", "555-0123")
     order = os.getenv("CUSTOMER_ORDER_NUMBER", "ORD-88492")
     return (
