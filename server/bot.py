@@ -159,7 +159,8 @@ def _evaluate_outcome(transcript: str, mode: str) -> str:
     prompt = (
         f"You are evaluating a voice call. The customer is the 'assistant' in the transcript; 'user' is support/agent. "
         f"The customer was {'seeking a refund' if mode == 'refund' else 'negotiating (discount/booking/deal)'}. "
-        f"Did the customer get what they wanted (refund granted, deal agreed, discount given, etc.)?\n\n"
+        f"The transcript may be truncated at the end. If it shows the customer got what they wanted (refund granted, deal agreed, credit/voucher offered and accepted, etc.), answer success. "
+        f"Only answer failure if the transcript clearly shows no resolution or the customer did not get what they wanted.\n\n"
         f"Transcript:\n{transcript}\n\n"
         f"Answer with exactly one word: success or failure."
     )
@@ -175,9 +176,12 @@ def _evaluate_outcome(transcript: str, mode: str) -> str:
             c = response.candidates[0] if response.candidates else None
             if c and getattr(c, "content", None) and c.content.parts:
                 text = getattr(c.content.parts[0], "text", "") or ""
-        text = text.strip().lower()
-        # Accept "success" anywhere (Gemini often says "The outcome is success." not just "success")
-        return "success" if "success" in text else "failure"
+        raw = (text or "").strip()
+        text = raw.lower()
+        outcome = "success" if "success" in text else "failure"
+        if outcome == "failure":
+            logger.info(f"Evaluator raw response: {raw[:200]!r}")
+        return outcome
     except Exception:
         return "failure"
 
@@ -284,8 +288,8 @@ async def run_bot(transport: BaseTransport):
     async def on_client_disconnected(transport, client):
         duration_seconds = time.monotonic() - start_time
         logger.info(f"Client disconnected session_id={session_id} duration_secs={round(duration_seconds, 1)}")
-        # Brief delay so aggregators can flush in-flight frames into context
-        await asyncio.sleep(0.5)
+        # Delay so aggregators can flush in-flight frames (including final turns) into context
+        await asyncio.sleep(1.5)
         messages = context.get_messages()
         transcript = _format_transcript(messages)
         transcript_length = len(transcript)
