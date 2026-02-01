@@ -288,10 +288,14 @@ async def run_bot(transport: BaseTransport):
     async def on_client_disconnected(transport, client):
         duration_seconds = time.monotonic() - start_time
         logger.info(f"Client disconnected session_id={session_id} duration_secs={round(duration_seconds, 1)}")
-        # Delay so aggregators can flush in-flight frames (including final turns) into context
-        await asyncio.sleep(1.5)
-        messages = context.get_messages()
-        transcript = _format_transcript(messages)
+        # Poll context multiple times; aggregators may flush final turns late — use longest transcript
+        transcript = ""
+        for delay in (0.5, 0.5, 0.5, 1.0, 1.0):
+            await asyncio.sleep(delay)
+            messages = context.get_messages()
+            candidate = _format_transcript(messages)
+            if len(candidate) > len(transcript):
+                transcript = candidate
         transcript_length = len(transcript)
         preview = (transcript[:600] + "…") if len(transcript) > 600 else transcript
         logger.info(
