@@ -47,6 +47,7 @@ from outcome import (
     run_single_row_eval_sync,
     suggest_tactic_wandb,
 )
+from tactic_vectors import add_tactic_with_dedupe
 
 load_dotenv(override=True)
 
@@ -73,7 +74,7 @@ HAGGLER_OUTCOME_DATASET = OUTCOME_DATASET_NAME
 BASE_REFUND = (
     "You are a customer on a voice call with customer support. You are seeking a refund for a flight cancellation. "
     "Use the tactics provided. Stay in character as the customer. You are calling them; they answer. "
-    "When the support agent grants the refund, end the call."
+    "When the support agent grants the refund, no need to ask for more details; if they refuse the refund, end the call, do not persist."
 )
 BASE_NEGOTIATION = (
     "You are a customer on a voice call negotiating (e.g. a discount, booking, or deal). "
@@ -187,18 +188,14 @@ def _format_transcript(messages: list) -> str:
 
 
 def _merge_winning_tactics(url: str, session_id: str, tactics: list[str]) -> None:
-    """Merge session tactics into agent:winning_tactics (self-improvement)."""
+    """Merge session tactics into agent:winning_tactics (cosine-similarity dedupe)."""
     r = redis.from_url(url)
     key = f"{REDIS_SESSION_TACTICS_PREFIX}{session_id}{REDIS_SESSION_TACTICS_SUFFIX}"
     raw = r.lrange(key, 0, -1)
     session_tactics = [b.decode() if isinstance(b, bytes) else b for b in (raw or [])]
     r.delete(key)
-    existing = set(r.lrange(REDIS_WINNING_KEY, 0, -1) or [])
-    existing_decoded = {e.decode() if isinstance(e, bytes) else e for e in existing}
     for t in session_tactics or tactics:
-        if t not in existing_decoded:
-            r.rpush(REDIS_WINNING_KEY, t)
-            existing_decoded.add(t)
+        add_tactic_with_dedupe(r, REDIS_WINNING_KEY, t)
     r.close()
 
 
@@ -324,12 +321,9 @@ async def run_bot(transport: BaseTransport):
             else:
                 base_raw = r.lrange(REDIS_TACTICS_KEY, 0, -1) or []
                 base_tactics = {b.decode() if isinstance(b, bytes) else b for b in base_raw}
-                existing_raw = r.lrange(REDIS_FAILED_KEY, 0, -1) or []
-                existing = {e.decode() if isinstance(e, bytes) else e for e in existing_raw}
                 for t in config["tactics"]:
-                    if t not in base_tactics and t not in existing:
-                        r.rpush(REDIS_FAILED_KEY, t)
-                        existing.add(t)
+                    if t not in base_tactics:
+                        add_tactic_with_dedupe(r, REDIS_FAILED_KEY, t)
                 r.expire(REDIS_FAILED_KEY, 86400 * 7)
             r.close()
         await task.cancel()

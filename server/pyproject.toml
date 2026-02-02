@@ -8,6 +8,7 @@ dependencies = [
     "pipecat-ai[google,runner,silero,webrtc]",
     "weave",
     "redis>=5.0",
+    "sentence-transformers>=3.0",
 ]
 
 [dependency-groups]

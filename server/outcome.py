@@ -103,7 +103,7 @@ def run_single_row_eval_sync(transcript: str, mode: str, expected_outcome: str) 
 
 TACTIC_SUGGEST_SYSTEM = (
     "You are analyzing a successful voice call. In the transcript, the customer is the 'assistant', support is the 'user'. "
-    "Based on what worked in this call, suggest exactly one new tactic that could help in similar situations. "
+    "Based on what worked in this call, suggest exactly one new tactic that could help the person trying to get the refund that was successfully used here. "
     "Output only the tactic text, one clear sentence, no preamble or numbering."
 )
 
